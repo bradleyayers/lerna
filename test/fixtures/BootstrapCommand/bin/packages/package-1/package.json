@@ -2,6 +2,6 @@
   "name": "package-1",
   "version": "1.0.0",
   "dependencies": {
-    "foo": "^1.0.0"
+    "external": "^1.0.0"
   }
 }

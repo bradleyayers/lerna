@@ -20,62 +20,27 @@ describe("BootstrapCommand", () => {
       testDir = initFixture("BootstrapCommand/basic", done);
     });
 
-    it("should bootstrap files", done => {
+    it("should bootstrap packages", done => {
       const bootstrapCommand = new BootstrapCommand([], {});
 
       bootstrapCommand.runValidations();
       bootstrapCommand.runPreparations();
 
-      assertStubbedCalls([
-        [ChildProcessUtilities, "spawn", { nodeCallback: true }, [
-          { args: ["npm", ["install", "package-1@^0.0.0"], { cwd: path.join(testDir, "packages/package-4"), stdio: "ignore" }] }
-        ]]
-      ]);
+      const depsToInstall = bootstrapCommand.getDependenciesToInstall(bootstrapCommand.getPackages());
 
-      bootstrapCommand.runCommand(exitWithCode(0, err => {
-        if (err) return done(err);
-
-        try {
-          assert.ok(!pathExists.sync(path.join(testDir, "lerna-debug.log")), "lerna-debug.log should not exist");
-
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-1/node_modules")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-2/node_modules")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-3/node_modules")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-4/node_modules")));
-
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-2/node_modules/package-1")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-2/node_modules/package-1/index.js")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-2/node_modules/package-1/package.json")));
-
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-3/node_modules/package-2")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-3/node_modules/package-2/index.js")));
-          assert.ok(pathExists.sync(path.join(testDir, "packages/package-3/node_modules/package-2/package.json")));
-
-          // Should not exist because mis-matched version
-          assert.ok(!pathExists.sync(path.join(testDir, "packages/package-4/node_modules/package-1")));
-
-          assert.equal(fs.readFileSync(path.join(testDir, "packages/package-2/node_modules/package-1/index.js")).toString(), "/**\n * @prefix\n */\nmodule.exports = require(\"" + path.join(testDir, "packages/package-1") + "\");\n");
-          assert.equal(fs.readFileSync(path.join(testDir, "packages/package-2/node_modules/package-1/package.json")).toString(), "{\n  \"name\": \"package-1\",\n  \"version\": \"1.0.0\"\n}\n");
-
-          assert.equal(fs.readFileSync(path.join(testDir, "packages/package-3/node_modules/package-2/index.js")).toString(), "/**\n * @prefix\n */\nmodule.exports = require(\"" + path.join(testDir, "packages/package-2") + "\");\n");
-          assert.equal(fs.readFileSync(path.join(testDir, "packages/package-3/node_modules/package-2/package.json")).toString(), "{\n  \"name\": \"package-2\",\n  \"version\": \"1.0.0\"\n}\n");
-
-          done();
-        } catch (err) {
-          done(err);
-        }
-      }));
-    });
-
-    it("should not bootstrap an ignored package", done => {
-      const bootstrapCommand = new BootstrapCommand([], {
-        ignore: "package-2"
+      assert.deepEqual(depsToInstall, {
+        __ROOT__: ["foo@^1.0.0"],
+        "package-3": ["foo@0.1.12"],
+        "package-4": ["package-1@^0.0.0"]
       });
 
-      bootstrapCommand.runValidations();
-      bootstrapCommand.runPreparations();
-
       assertStubbedCalls([
+        [ChildProcessUtilities, "spawn", { nodeCallback: true }, [
+          { args: ["npm", ["install", "foo@^1.0.0"], { cwd: testDir, stdio: "ignore" }] }
+        ]],
+        [ChildProcessUtilities, "spawn", { nodeCallback: true }, [
+          { args: ["npm", ["install", "foo@0.1.12"], { cwd: path.join(testDir, "packages/package-3"), stdio: "ignore" }] }
+        ]],
         [ChildProcessUtilities, "spawn", { nodeCallback: true }, [
           { args: ["npm", ["install", "package-1@^0.0.0"], { cwd: path.join(testDir, "packages/package-4"), stdio: "ignore" }] }
         ]]
@@ -86,7 +51,26 @@ describe("BootstrapCommand", () => {
 
         try {
           assert.ok(!pathExists.sync(path.join(testDir, "lerna-debug.log")), "lerna-debug.log should not exist");
-          assert.ok(!pathExists.sync(path.join(testDir, "packages/package-2/node_modules/package-1")));
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules", "package-1")),
+            path.join(testDir, "packages/package-1"),
+            "package-1 should be symlinked"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules", "package-2")),
+            path.join(testDir, "packages/package-2"),
+            "package-2 should be symlinked"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules", "package-3")),
+            path.join(testDir, "packages/package-3"),
+            "package-3 should be symlinked"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules", "package-4")),
+            path.join(testDir, "packages/package-4"),
+            "package-4 should be symlinked"
+          );
           done();
         } catch (err) {
           done(err);
@@ -102,12 +86,29 @@ describe("BootstrapCommand", () => {
       bootstrapCommand.runValidations();
       bootstrapCommand.runPreparations();
 
+      assertStubbedCalls([
+        [ChildProcessUtilities, "spawn", { nodeCallback: true }, [
+          { args: ["npm", ["install", "foo@^1.0.0"], { cwd: testDir, stdio: "ignore" }] }
+        ]]
+      ]);
+
       bootstrapCommand.runCommand(exitWithCode(0, err => {
         if (err) return done(err);
 
         try {
           assert.ok(!pathExists.sync(path.join(testDir, "lerna-debug.log")), "lerna-debug.log should not exist");
-          assert.ok(!pathExists.sync(path.join(testDir, "packages/package-3/node_modules/package-2")));
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules", "package-1")),
+            path.join(testDir, "packages/package-1"),
+            "package-1 should be symlinked"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules", "package-2")),
+            path.join(testDir, "packages/package-2"),
+            "package-2 should be symlinked"
+          );
+          assert.throws(() => fs.readlinkSync(path.join(testDir, "node_modules", "package-3")));
+          assert.throws(() => fs.readlinkSync(path.join(testDir, "node_modules", "package-4")));
           done();
         } catch (err) {
           done(err);
@@ -129,11 +130,14 @@ describe("BootstrapCommand", () => {
       bootstrapCommand.runValidations();
       bootstrapCommand.runPreparations();
 
-      let installed = false;
+      let installed = 0;
+      let spawnArgs = [];
+      let spawnOptions = [];
+
       stub(ChildProcessUtilities, "spawn", (command, args, options, callback) => {
-        assert.deepEqual(args, ["install", "external@^1.0.0"])
-        assert.deepEqual(options, { cwd: path.join(testDir, "packages/package-1"), stdio: "ignore" })
-        installed = true;
+        spawnArgs.push(args);
+        spawnOptions.push(options);
+        installed++;
         callback();
       });
 
@@ -142,7 +146,15 @@ describe("BootstrapCommand", () => {
 
         try {
           assert.ok(!pathExists.sync(path.join(testDir, "lerna-debug.log")), "lerna-debug.log should not exist");
-          assert.ok(installed, "The external dependency was installed");
+          assert.deepEqual(spawnArgs, [
+            ["install", "external@^2.0.0"],
+            ["install", "external@^1.0.0"]
+          ]);
+          assert.deepEqual(spawnOptions, [
+            { cwd: testDir, stdio: "ignore" },
+            { cwd: path.join(testDir, "packages/package-1"), stdio: "ignore" }
+          ]);
+          assert.equal(installed, 2, "The external dependencies were installed");
 
           done();
         } catch (err) {
@@ -178,6 +190,58 @@ describe("BootstrapCommand", () => {
           assert.ok(!pathExists.sync(path.join(testDir, "lerna-debug.log")), "lerna-debug.log should not exist");
           assert.ok(!installed, "The external dependency was not installed");
 
+          done();
+        } catch (err) {
+          done(err);
+        }
+      }));
+    });
+  });
+
+  describe("dependency binaries", () => {
+    let testDir;
+
+    beforeEach(done => {
+      testDir = initFixture("BootstrapCommand/bin", done);
+    });
+
+    it("should be linked in root and packages", done => {
+      const bootstrapCommand = new BootstrapCommand([], {});
+
+      bootstrapCommand.runValidations();
+      bootstrapCommand.runPreparations();
+
+      assertStubbedCalls([
+        [ChildProcessUtilities, "spawn", { nodeCallback: true }, [
+          { args: ["npm", ["install", "external@^1.0.0"], { cwd: path.join(testDir, "packages/package-1"), stdio: "ignore" }] }
+        ]]
+      ]);
+
+      bootstrapCommand.runCommand(exitWithCode(0, err => {
+        if (err) return done(err);
+
+        try {
+          assert.ok(!pathExists.sync(path.join(testDir, "lerna-debug.log")), "lerna-debug.log should not exist");
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules/.bin", "foo")),
+            path.join(testDir, "packages/package-2/foo.js"),
+            "foo binary from package-2 should be symlinked at the root"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "node_modules/.bin", "bar")),
+            path.join(testDir, "packages/package-2/bar.js"),
+            "bar binary from package-2 should be symlinked at the root"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "packages/package-3/node_modules/.bin/foo")),
+            path.join(testDir, "packages/package-2/foo.js"),
+            "foo binary package-2 should be symlinked in package-3"
+          );
+          assert.equal(
+            fs.readlinkSync(path.join(testDir, "packages/package-3/node_modules/.bin/bar")),
+            path.join(testDir, "packages/package-2/bar.js"),
+            "bar binary package-2 should be symlinked in package-3"
+          );
           done();
         } catch (err) {
           done(err);
