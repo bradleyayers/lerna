@@ -1,5 +1,7 @@
 import objectAssign from "object-assign";
 import path from "path";
+import semver from "semver";
+import logger from "./logger";
 
 export default class Package {
   constructor(pkg, location) {
@@ -52,11 +54,63 @@ export default class Package {
     return this._package.scripts;
   }
 
+  get config() {
+    return this._package.lerna || {};
+  }
+
+  get bootstrapConfig() {
+    return this.config && this.config.bootstrapConfig || {};
+  }
+
   isPrivate() {
     return !!this._package.private;
   }
 
   toJsonString() {
     return JSON.stringify(this._package, null, 2) + "\n";
+  }
+
+  /**
+   * Determine if a dependency version satisfies the requirements of this package
+   * @param {Package} dependency
+   * @param {Boolean} showWarning
+   * @returns {Boolean}
+   */
+  hasMatchingDependency(dependency, showWarning = false) {
+    const expectedVersion = this.allDependencies[dependency.name];
+    const actualVersion = dependency.version;
+
+    if (!expectedVersion) {
+      return false;
+    }
+
+    // check if semantic versions are compatible
+    if (semver.satisfies(actualVersion, expectedVersion)) {
+      return true;
+    }
+
+    if (showWarning) {
+      logger.warning(
+        `Version mismatch inside "${this.name}". ` +
+        `Depends on "${dependency.name}@${expectedVersion}" ` +
+        `instead of "${dependency.name}@${actualVersion}".`
+      );
+    }
+
+    return false;
+  }
+
+  /**
+   * Determine if a dependency has been installed for this package
+   * @param {String} dependency
+   * @returns {Boolean}
+   */
+  hasDependencyInstalled(dependency) {
+    const packageJson = path.join(this.nodeModulesLocation, dependency, "package.json");
+    try {
+      return semver.satisfies(require(packageJson).version, this.allDependencies[dependency]);
+    } catch (e) {
+      return false;
+    }
   }
 }
